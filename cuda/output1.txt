@@ -1,0 +1,2 @@
+Tempo di esecuzione: 117 ms
+Verifica completata: risultato corretto!

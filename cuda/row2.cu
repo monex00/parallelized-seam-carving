@@ -1,9 +1,10 @@
 #include <cuda_runtime.h>
 #include <iostream>
 #include <cstdlib>
+#include <float.h>
 
-#define WIDTH 10    // Dimensione della matrice in larghezza
-#define HEIGHT 10   // Dimensione della matrice in altezza
+#define WIDTH  4000   // Dimensione della matrice in larghezza
+#define HEIGHT 3000   // Dimensione della matrice in altezza
 
 // Funzione per inizializzare la matrice con valori casuali
 void initializeMatrix(float* matrix, int width, int height) {
@@ -31,30 +32,36 @@ void printMatrix(float* matrix, int width, int height) {
 }
 
 
-#define BLOCK_SIZE_X 256
+#define BLOCK_SIZE_X 10
 #define PADDING 1
 
 __global__ void computeStencilRow(float* input, float* output, int width, int height, int currentRow) {
     extern __shared__ float sharedMem[];
-    
     // Calcolo degli indici
-    int tx = threadIdx.x;
+    int tx = threadIdx.x; 
     int bx = blockIdx.x;
-    int x = bx * (BLOCK_SIZE_X - 2*PADDING) + tx;
+
+    // indice x della matrice
+    int x = bx * BLOCK_SIZE_X + tx -1;
     
     // Indici per la memoria condivisa
-    int s_idx = tx + PADDING;
+    int s_idx = tx;
     
     // Caricamento dati in memoria condivisa dalla riga superiore (già calcolata)
-    if (currentRow > 0 && x < width) {
-        sharedMem[s_idx] = output[(currentRow-1)*width + x];  // Usiamo output invece di input per leggere i risultati precedenti
+    if (currentRow > 0) {
+        if (x == -1 || x == width) {
+            sharedMem[s_idx] = FLT_MAX;
+        } else { 
+            sharedMem[s_idx] = output[(currentRow-1)*width + x];
+        }
     }
     
     __syncthreads();
-    
+
     // Calcolo solo se siamo in una posizione valida
-    if (currentRow > 0 && x > 0 && x < width-1) {
+    if (currentRow > 0 && s_idx > 0 && s_idx < BLOCK_SIZE_X + 1) {
         // Prendo i tre valori dalla riga superiore (già calcolati)
+      
         float topLeft = sharedMem[s_idx - 1];
         float topCenter = sharedMem[s_idx];
         float topRight = sharedMem[s_idx + 1];
@@ -64,31 +71,40 @@ __global__ void computeStencilRow(float* input, float* output, int width, int he
         
         // Calcolo il nuovo valore
         float minValue = min(topLeft, min(topCenter, topRight));
-        output[currentRow*width + x] = currentValue + minValue;
-    } else if (currentRow == 0 && x < width) {
+        output[currentRow*width + x] = currentValue + minValue; 
+        
+    } else if (currentRow == 0 && x > -1 && x < width) {
         // Per la prima riga, copiamo semplicemente i valori dall'input
-        output[x] = input[x];
-    }
+        output[currentRow*width + x] = input[currentRow*width + x];
+    }  
 }
+
+
 
 void processMatrixWithDependencies(float* hostInput, float* hostOutput, int width, int height) {
     float *d_input, *d_output;
     size_t size = width * height * sizeof(float);
-    
+
+    // Inizializzazione degli eventi per misurare il tempo
+    cudaEvent_t start, stop;
+    cudaEventCreate(&start);
+    cudaEventCreate(&stop);
+
+    // Inizio del timer
+    cudaEventRecord(start, 0);
+
     // Allocazione memoria su device
     cudaMalloc(&d_input, size);
     cudaMalloc(&d_output, size);
-    
+
     // Copia input su device
     cudaMemcpy(d_input, hostInput, size, cudaMemcpyHostToDevice);
-    
+
     // Dimensione dei blocchi e della memoria condivisa
-    dim3 blockSize(BLOCK_SIZE_X, 1);
-    // 10 + 5 - 2*1 -1  = 12
-    // 12 / 3 = 4
-    dim3 gridSize((width + BLOCK_SIZE_X - 2*PADDING - 1) / (BLOCK_SIZE_X - 2*PADDING), 1);
-    size_t sharedMemSize = (BLOCK_SIZE_X + 2*PADDING) * sizeof(float);
-    
+    dim3 blockSize(BLOCK_SIZE_X + 2 * PADDING, 1);
+    dim3 gridSize(width / (BLOCK_SIZE_X), 1);
+    size_t sharedMemSize = (BLOCK_SIZE_X + 2 * PADDING) * sizeof(float);
+
     // Processiamo una riga alla volta per rispettare le dipendenze
     for (int row = 0; row < height; row++) {
         computeStencilRow<<<gridSize, blockSize, sharedMemSize>>>(
@@ -96,14 +112,28 @@ void processMatrixWithDependencies(float* hostInput, float* hostOutput, int widt
         );
         cudaDeviceSynchronize();  // Aspettiamo che la riga sia completata prima di procedere
     }
-    
+
     // Copia risultato su host
     cudaMemcpy(hostOutput, d_output, size, cudaMemcpyDeviceToHost);
-    
+
+    // Stop del timer
+    cudaEventRecord(stop, 0);
+    cudaEventSynchronize(stop);
+
+    // Calcolo e stampa del tempo di esecuzione
+    float milliseconds = 0;
+    cudaEventElapsedTime(&milliseconds, start, stop);
+    std::cout << "Tempo di esecuzione: " << milliseconds << " ms" << std::endl;
+
     // Pulizia
     cudaFree(d_input);
     cudaFree(d_output);
+
+    // Distruzione degli eventi
+    cudaEventDestroy(start);
+    cudaEventDestroy(stop);
 }
+
 
 
 int main() {
@@ -112,7 +142,7 @@ int main() {
 
     // Inizializzazione della matrice di input
     initializeMatrix(hostInput, WIDTH, HEIGHT);
-        printMatrix(hostInput, WIDTH, HEIGHT);
+    // printMatrix(hostInput, WIDTH, HEIGHT);
     // Esegui l'elaborazione
     processMatrixWithDependencies(hostInput, hostOutput, WIDTH, HEIGHT);
 
@@ -122,7 +152,7 @@ int main() {
     } else {
         std::cout << "Errore: risultato non corretto." << std::endl;
     }
-    printMatrix(hostOutput, WIDTH, HEIGHT);
+    //  printMatrix(hostOutput, WIDTH, HEIGHT);
     delete[] hostInput;
     delete[] hostOutput;
 
