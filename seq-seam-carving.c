@@ -211,7 +211,7 @@ int main(int argc, char **argv)
     Mat dp = mat_alloc(width_, height_);
     int *seam = malloc(sizeof(*seam)*height_);
 
-    int seams_to_remove = img.width * 2 / 3;
+    int seams_to_remove = img.width * 1 / 3;
 
     luminance(img, lum);
     sobel_filter(lum, grad);
