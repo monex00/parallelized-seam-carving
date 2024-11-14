@@ -217,7 +217,7 @@ int main(int argc, char **argv)
     int width_, height_;
     uint32_t *pixels_ = (uint32_t*)stbi_load(file_path, &width_, &height_, NULL, 4);
     if (pixels_ == NULL) {
-        fprintf(stderr, "ERROR: could not read %s\n", file_path);
+       fprintf(stderr, "ERROR: could not read %s\n", file_path);
         return 1;
     }
     
