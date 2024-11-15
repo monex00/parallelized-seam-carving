@@ -19,6 +19,8 @@ bool verifyResult(float* hostInput, float* hostOutput, int width, int height) {
     return true;
 }
 
+
+
 // Funzione per stampare la matrice
 void printMatrix(float* matrix, int width, int height) {
     for (int i = 0; i < height; ++i) {
@@ -89,6 +91,7 @@ void processMatrixWithDependencies(float* hostInput, float* hostOutput, int widt
     dim3 gridSize((width + BLOCK_SIZE_X - 2*PADDING - 1) / (BLOCK_SIZE_X - 2*PADDING), 1);
     size_t sharedMemSize = (BLOCK_SIZE_X + 2*PADDING) * sizeof(float);
     
+    // https://stackoverflow.com/questions/6404992/CUDA-BLOCK-Synchronization 
     // Processiamo una riga alla volta per rispettare le dipendenze
     for (int row = 0; row < height; row++) {
         computeStencilRow<<<gridSize, blockSize, sharedMemSize>>>(

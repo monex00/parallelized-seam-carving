@@ -60,7 +60,7 @@ int main(int argc, char **argv)
     nob_cmd_append(&cmd, "./build/stb_image.o");
     nob_cmd_append(&cmd, "./build/stb_image_write.o");
     nob_cmd_append(&cmd, "-lm");
-     nob_cmd_append(&cmd, "-fopenmp");
+    nob_cmd_append(&cmd, "-fopenmp");
     if (!nob_cmd_run_sync(cmd)) return 1;
 
     cmd.count = 0;
